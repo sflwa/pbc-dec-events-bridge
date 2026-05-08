@@ -3,7 +3,7 @@
  * Plugin Name:       PBC DEC Events Bridge
  * Plugin URI:        https://southfloridawebadvisors.com
  * Description:       A multi-source API bridge for The Events Calendar, Solidarity Tech, and Mobilize.
- * Version:           1.1.3
+ * Version:           1.1.4
  * Author:            South Florida Web Advisors
  * Author URI:        https://southfloridawebadvisors.com
  * License:           GPL-2.0+
@@ -15,7 +15,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 // Define Constants
-define( 'PBC_DEC_BRIDGE_VERSION', '1.1.3' );
+define( 'PBC_DEC_BRIDGE_VERSION', '1.1.4' );
 define( 'PBC_DEC_BRIDGE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'PBC_DEC_BRIDGE_URL', plugin_dir_url( __FILE__ ) );
 
