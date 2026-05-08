@@ -5,7 +5,7 @@
  *
  * @package    PBC_DEC_Events_Bridge
  * @author     South Florida Web Advisors
- * @version    1.1.2
+ * @version    1.1.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,6 +13,24 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class PBC_DEC_Sync {
+
+	/**
+	 * Run sync for all active sources.
+	 */
+	public function run_full_sync() {
+		global $wpdb;
+		$sources = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}pbc_dec_sources WHERE is_active = 1" );
+		
+		$total_new = 0;
+		if ( $sources ) {
+			foreach ( $sources as $source ) {
+				$total_new += $this->sync_source( $source );
+			}
+		}
+
+		update_option( 'pbc_dec_last_sync_time', current_time( 'mysql' ) );
+		return $total_new;
+	}
 
 	/**
 	 * Route the sync request based on platform.
@@ -28,7 +46,6 @@ class PBC_DEC_Sync {
 
 	/**
 	 * Pull from Solidarity Tech API.
-	 * Maps start_time from the JSON to the database event_date.
 	 */
 	private function sync_solidarity( $source ) {
 		$response = wp_remote_get( "https://api.solidarity.tech/v1/events", array(
@@ -46,7 +63,7 @@ class PBC_DEC_Sync {
 
 		$body = json_decode( wp_remote_retrieve_body( $response ), true );
 		$count = 0;
-		$today = date( 'Y-m-d 00:00:00', strtotime( current_time( 'mysql' ) ) ); // Today's boundary
+		$today = date( 'Y-m-d 00:00:00', strtotime( current_time( 'mysql' ) ) );
 
 		if ( isset( $body['data'] ) && is_array( $body['data'] ) ) {
 			foreach ( $body['data'] as $event ) {
@@ -55,14 +72,11 @@ class PBC_DEC_Sync {
 				}
 				
 				foreach ( $event['event_sessions'] as $session ) {
-					// Map Solidarity "start_time" to the database "event_date" field
 					$session_start = isset( $session['start_time'] ) ? $session['start_time'] : '';
 					
 					if ( ! empty( $session_start ) ) {
-						// Convert ISO8601 to MySQL format: YYYY-MM-DD HH:MM:SS
 						$formatted_date = date( 'Y-m-d H:i:s', strtotime( $session_start ) );
 						
-						// Only ingest if the event is today or in the future
 						if ( $formatted_date >= $today ) {
 							if ( $this->stage_event( $source->id, $event['id'], $session['id'], $formatted_date, $event ) ) {
 								$count++;
@@ -79,7 +93,6 @@ class PBC_DEC_Sync {
 	 * Pull from Mobilize America API.
 	 */
 	private function sync_mobilize( $source ) {
-		// Mobilize URL structure
 		$url = "https://api.mobilize.us/v1/organizations/" . intval( $source->org_id ) . "/events?limit=50&timeslot_start=gte_now";
 		$response = wp_remote_get( $url, array( 
 			'timeout' => 30,
@@ -92,7 +105,7 @@ class PBC_DEC_Sync {
 
 		$body = json_decode( wp_remote_retrieve_body( $response ), true );
 		$count = 0;
-		$today = date( 'Y-m-d 00:00:00', strtotime( current_time( 'mysql' ) ) ); // Today's boundary
+		$today = date( 'Y-m-d 00:00:00', strtotime( current_time( 'mysql' ) ) );
 
 		if ( isset( $body['data'] ) && is_array( $body['data'] ) ) {
 			foreach ( $body['data'] as $event ) {
@@ -101,10 +114,8 @@ class PBC_DEC_Sync {
 				}
 				
 				foreach ( $event['timeslots'] as $timeslot ) {
-					// Mobilize uses Unix timestamps for start_date
 					$date = date( 'Y-m-d H:i:s', intval( $timeslot['start_date'] ) );
 					
-					// Only ingest if the event is today or in the future
 					if ( $date >= $today ) {
 						if ( $this->stage_event( $source->id, $event['id'], $timeslot['id'], $date, $event ) ) {
 							$count++;
@@ -118,7 +129,6 @@ class PBC_DEC_Sync {
 
 	/**
 	 * Insert session into the bridge table.
-	 * Uses UNIQUE constraint to prevent duplicates.
 	 */
 	private function stage_event( $source_id, $event_id, $session_id, $date, $raw_data ) {
 		global $wpdb;
