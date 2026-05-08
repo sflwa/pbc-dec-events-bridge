@@ -5,7 +5,7 @@
  *
  * @package    PBC_DEC_Events_Bridge
  * @author     South Florida Web Advisors
- * @version    1.1.0
+ * @version    1.1.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -46,6 +46,7 @@ class PBC_DEC_Sync {
 
 		$body = json_decode( wp_remote_retrieve_body( $response ), true );
 		$count = 0;
+		$today = date( 'Y-m-d 00:00:00', strtotime( current_time( 'mysql' ) ) ); // Today's boundary
 
 		if ( isset( $body['data'] ) && is_array( $body['data'] ) ) {
 			foreach ( $body['data'] as $event ) {
@@ -61,8 +62,11 @@ class PBC_DEC_Sync {
 						// Convert ISO8601 to MySQL format: YYYY-MM-DD HH:MM:SS
 						$formatted_date = date( 'Y-m-d H:i:s', strtotime( $session_start ) );
 						
-						if ( $this->stage_event( $source->id, $event['id'], $session['id'], $formatted_date, $event ) ) {
-							$count++;
+						// Only ingest if the event is today or in the future
+						if ( $formatted_date >= $today ) {
+							if ( $this->stage_event( $source->id, $event['id'], $session['id'], $formatted_date, $event ) ) {
+								$count++;
+							}
 						}
 					}
 				}
@@ -88,6 +92,7 @@ class PBC_DEC_Sync {
 
 		$body = json_decode( wp_remote_retrieve_body( $response ), true );
 		$count = 0;
+		$today = date( 'Y-m-d 00:00:00', strtotime( current_time( 'mysql' ) ) ); // Today's boundary
 
 		if ( isset( $body['data'] ) && is_array( $body['data'] ) ) {
 			foreach ( $body['data'] as $event ) {
@@ -99,8 +104,11 @@ class PBC_DEC_Sync {
 					// Mobilize uses Unix timestamps for start_date
 					$date = date( 'Y-m-d H:i:s', intval( $timeslot['start_date'] ) );
 					
-					if ( $this->stage_event( $source->id, $event['id'], $timeslot['id'], $date, $event ) ) {
-						$count++;
+					// Only ingest if the event is today or in the future
+					if ( $date >= $today ) {
+						if ( $this->stage_event( $source->id, $event['id'], $timeslot['id'], $date, $event ) ) {
+							$count++;
+						}
 					}
 				}
 			}
