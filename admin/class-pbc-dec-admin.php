@@ -4,7 +4,7 @@
  *
  * @package    PBC_DEC_Events_Bridge
  * @author     South Florida Web Advisors
- * @version    1.2.3
+ * @version    1.2.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -23,6 +23,7 @@ class PBC_DEC_Admin {
 		add_action( 'wp_ajax_pbc_hide_event', array( $this, 'ajax_hide_event' ) );
 		add_action( 'wp_ajax_pbc_unhide_event', array( $this, 'ajax_unhide_event' ) );
 		add_action( 'wp_ajax_pbc_add_to_calendar', array( $this, 'ajax_add_to_calendar' ) );
+		add_action( 'wp_ajax_pbc_manual_sync', array( $this, 'ajax_manual_sync' ) );
 		
 		// Scripts for AJAX
 		add_action( 'admin_footer', array( $this, 'print_admin_scripts' ) );
@@ -76,6 +77,26 @@ class PBC_DEC_Admin {
 			
 			add_settings_error( 'pbc_bridge_msgs', 'event_deleted', 'Event permanently removed from the bridge.', 'updated' );
 		}
+	}
+
+	/**
+	 * AJAX Manual Sync
+	 */
+	public function ajax_manual_sync() {
+		check_ajax_referer( 'pbc_sync_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( 'Unauthorized' );
+		}
+
+		require_once PBC_DEC_BRIDGE_PATH . 'includes/class-pbc-dec-sync.php';
+		$sync = new PBC_DEC_Sync();
+		$new_events = $sync->run_full_sync();
+
+		wp_send_json_success( array(
+			'message' => sprintf( 'Sync complete! %d new event sessions found.', $new_events ),
+			'last_sync' => date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), current_time( 'timestamp' ) )
+		) );
 	}
 
 	/**
@@ -469,12 +490,17 @@ class PBC_DEC_Admin {
 			$where_clause
 			ORDER BY b.event_date $sort_order
 		" );
+
+		$last_sync_raw = get_option( 'pbc_dec_last_sync_time' );
+		$last_sync_display = $last_sync_raw ? date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $last_sync_raw ) ) : 'Never';
+		$sync_nonce = wp_create_nonce( 'pbc_sync_nonce' );
 		?>
 		<div class="wrap">
 			<h1>Imported Events</h1>
 			
-			<div style="margin: 20px 0;">
-				<button class="button button-secondary" disabled>Trigger Manual Sync (Coming Soon)</button>
+			<div style="margin: 20px 0; display: flex; align-items: center; gap: 15px;">
+				<button class="button button-primary" id="pbc-trigger-sync" data-nonce="<?php echo $sync_nonce; ?>">Trigger Manual Sync</button>
+				<span style="font-size: 13px; color: #64748b;">Last Ingestion: <strong id="last-sync-label"><?php echo $last_sync_display; ?></strong></span>
 			</div>
 
 			<nav class="nav-tab-wrapper">
@@ -586,6 +612,29 @@ class PBC_DEC_Admin {
 		?>
 		<script type="text/javascript">
 		jQuery(document).ready(function($) {
+			// Handle Manual Sync
+			$('#pbc-trigger-sync').on('click', function(e) {
+				e.preventDefault();
+				const btn = $(this);
+				const nonce = btn.data('nonce');
+
+				btn.prop('disabled', true).text('Syncing...');
+
+				$.post(ajaxurl, {
+					action: 'pbc_manual_sync',
+					nonce: nonce
+				}, function(response) {
+					if (response.success) {
+						alert(response.data.message);
+						$('#last-sync-label').text(response.data.last_sync);
+						location.reload(); // Reload to show new items
+					} else {
+						alert('Sync Failed: ' + response.data);
+					}
+					btn.prop('disabled', false).text('Trigger Manual Sync');
+				});
+			});
+
 			// Handle Hide/Unhide AJAX
 			$('.pbc-hide-event, .pbc-unhide-event').on('click', function(e) {
 				e.preventDefault();
